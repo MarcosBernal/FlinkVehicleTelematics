@@ -1,0 +1,9 @@
+# Idea files
+.idea
+*.iml
+
+# Temporal files
+~*
+
+# Compiling files
+target
