@@ -13,14 +13,15 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 
 public class Test {
 
-    // TODO: !!! CHANGE HERE YOUR DEFAULT INPUT AND OUTPUT FOLDERS  !!!!!
-    private static final String INPUT_FOLDER_PATH = "/media/sf_Shared2Ubuntu/flink/project/data/in/";
-    private static final String OUTPUT_FOLDER_PATH = "/media/sf_Shared2Ubuntu/flink/project/data/out/";
-
+    private static String OUTPUT_FOLDER_PATH;
     private static DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream;
     private static SingleOutputStreamOperator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedTimedStream;
 
     public static void main(String[] args) {
+
+        // TODO: !!! CHANGE HERE YOUR DEFAULT INPUT AND OUTPUT FOLDERS  !!!!!
+        String INPUT_FOLDER_PATH = args[0];
+        OUTPUT_FOLDER_PATH = args[1];
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
@@ -96,6 +97,3 @@ public class Test {
     }
 
 }
-
-
-
