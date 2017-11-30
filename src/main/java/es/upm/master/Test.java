@@ -1,64 +1,54 @@
 package es.upm.master;
 
 import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
-import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.*;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
-import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.util.Collector;
-
-import scala.collection.generic.BitOperations.Int;
 
 public class Test {
+
+    private static final int TIM_FIELD = 0;
+    private static final int VID_FIELD = 1;
+    private static final int SPD_FIELD = 2;
+    private static final int WAY_FIELD = 3;
+    private static final int LAN_FIELD = 4;
+    private static final int DIR_FIELD = 5;
+    private static final int SEG_FIELD = 6;
+    private static final int POS_FIELD = 7;
 
     public static void main(String[] args) {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
+        // Import the file TODO: change input filepath
+        DataStreamSource<String> stream = env.readTextFile("/media/sf_Shared2Ubuntu/traffic-3xways.txt");
 
-        DataStreamSource<String> s2 = env.readTextFile("/Users/valerio/work/developing/gitlab/master-eit-flink/data/in.txt");
+        // Map all the lines (String) to a tuple of 8 elements consisting of the converted fields (String -> Integer)
+        DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream = stream
+                .map(new MapFunction<String, Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+                    @Override
+                    public Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(String s) throws Exception {
+                        String fields[] = s.split(",");
+                            return new Tuple8<>(
+                                    new Integer(fields[0]), new Integer(fields[1]), new Integer(fields[2]),
+                                    new Integer(fields[3]), new Integer(fields[4]), new Integer(fields[5]),
+                                    new Integer(fields[6]), new Integer(fields[7]));
+                    }});
 
-        SingleOutputStreamOperator<Tuple2<String, Integer>> s3 = s2.flatMap(new FlatMapFunction<String, Tuple2<String, Integer>>() {
+        // Once the stream is parsed filter those tuples whose speed (2nf field!) is larger or equal than 90
+        DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> highSpeedFines = parsedStream
+                .filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+                    @Override
+                    public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> tuple) throws Exception {
+                        return tuple.f2 >= 90;
+                    }});
 
-            @Override
-            public void flatMap(String input, Collector<Tuple2<String, Integer>> collecotor) throws Exception {
-                String[] wordArray = input.split(" ");
-                //THIS CAN BE REPLACED BY SUM UP COMMON WORDS IN A LINE
-                //AVOIDINF SENDING MORE THAN ONE OUTPUT TUPLE PER WORD
-                for (String word : wordArray) {
-                    Tuple2<String, Integer> t = new Tuple2<>(word,1);
-                    collecotor.collect(t);
-                }
-            }
-
-        });
-
-        KeyedStream<Tuple2<String, Integer>, Tuple> s4 = s3.keyBy(0);
-
-        SingleOutputStreamOperator<Tuple2<String, Integer>> s5 = s4.reduce(new ReduceFunction<Tuple2<String,Integer>>() {
-
-            @Override
-            public Tuple2<String, Integer> reduce(Tuple2<String, Integer> accumulator, Tuple2<String, Integer> input) throws Exception {
-
-                Tuple2<String, Integer> out = new Tuple2<>(accumulator.f0, accumulator.f1 + input.f1);
-                return out;
-            }
-        });
-
-        SingleOutputStreamOperator<Tuple2<String, Integer>> s6 = s5.filter(new FilterFunction<Tuple2<String,Integer>>() {
-
-            @Override
-            public boolean filter(Tuple2<String, Integer> input) throws Exception {
-
-                return (input.f1 >= 10);
-            }
-        });
-
-        s6.writeAsCsv("/Users/valerio/work/developing/gitlab/master-eit-flink/data/out.txt");
+        // Write the output into a new file TODO: change output filepath
+        highSpeedFines.writeAsCsv("/media/sf_Shared2Ubuntu/highFineSpeeds.csv");
 
         try {
             env.execute();
@@ -67,6 +57,52 @@ public class Test {
             e.printStackTrace();
         }
 
+        System.out.println("==========================================================");
+
     }
 
+}
+
+class Row2<T1, T2> extends Tuple2<Integer, Integer> {
+    public Row2(Integer value0, Integer value1) {
+        super(value0, value1);
+    }
+}
+
+class Row3<T1, T2, T3> extends Tuple3<Integer, Integer, Integer> {
+    public Row3(Integer value0, Integer value1, Integer value2) {
+        super(value0, value1, value2);
+    }
+}
+
+class Row4<T1, T2, T3, T4> extends Tuple4<Integer, Integer, Integer, Integer> {
+    public Row4(Integer value0, Integer value1, Integer value2, Integer value3) {
+        super(value0, value1, value2, value3);
+    }
+}
+
+class Row5<T1, T2, T3, T4, T5> extends Tuple5<Integer, Integer, Integer, Integer, Integer> {
+    public Row5(Integer value0, Integer value1, Integer value2, Integer value3, Integer value4) {
+        super(value0, value1, value2, value3, value4);
+    }
+}
+
+class Row6<T1, T2, T3, T4, T5, T6> extends Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> {
+    public Row6(Integer value0, Integer value1, Integer value2, Integer value3, Integer value4, Integer value5) {
+        super(value0, value1, value2, value3, value4, value5);
+    }
+}
+
+class Row7<T1, T2, T3, T4, T5, T6, T7>  extends Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer> {
+    public Row7(Integer value0, Integer value1, Integer value2, Integer value3, Integer value4, Integer value5, Integer value6) {
+        super(value0, value1, value2, value3, value4, value5, value6);
+    }
+}
+
+class Row8<T1, T2, T3, T4, T5, T6, T7, T8>
+        extends Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> {
+
+    public Row8(Integer value0, Integer value1, Integer value2, Integer value3, Integer value4, Integer value5, Integer value6, Integer value7) {
+        super(value0, value1, value2, value3, value4, value5, value6, value7);
+    }
 }
