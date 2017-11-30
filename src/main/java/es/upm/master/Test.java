@@ -20,18 +20,19 @@ public class Test {
     private static final int SEG_FIELD = 6;
     private static final int POS_FIELD = 7;
 
-    // TODO: !!! CHANGE HERE YOUR DEFAULT INPUT AND OUTPUT FOLDERS  !!!!!
-    private static final String INPUT_FOLDER_PATH = "/media/sf_Shared2Ubuntu/flink/project/data/in/";
-    private static final String OUTPUT_FOLDER_PATH = "/media/sf_Shared2Ubuntu/flink/project/data/out/";
 
     private static DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream;
 
     public static void main(String[] args) {
 
+        // TODO: !!! CHANGE HERE YOUR DEFAULT INPUT AND OUTPUT FOLDERS  !!!!!
+        String INPUT_FOLDER_PATH = args[0];
+        String OUTPUT_FOLDER_PATH = args[1];
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         // Import the file TODO: change input filepath
-        DataStreamSource<String> stream = env.readTextFile(INPUT_FOLDER_PATH + "traffic-3xways.txt");
+        DataStreamSource<String> stream = env.readTextFile(INPUT_FOLDER_PATH + "traffic-3xways");
 
         // Map all the lines (String) to a tuple of 8 elements consisting of the converted fields (String -> Integer)
         parsedStream = stream
@@ -45,11 +46,11 @@ public class Test {
                                     new Integer(fields[6]), new Integer(fields[7]));
                     }});
 
-        highSpeedAlert("highSpeedAlert.csv");
+        highSpeedAlert("highSpeedAlert.csv", OUTPUT_FOLDER_PATH);
 
-        avgSpeedAlert("avgSpeedAlert.csv");
+        avgSpeedAlert("avgSpeedAlert.csv",OUTPUT_FOLDER_PATH);
 
-        collisionAlert("collisionAlert.csv");
+        collisionAlert("collisionAlert.csv", OUTPUT_FOLDER_PATH);
 
         try {
             env.execute();
@@ -62,7 +63,8 @@ public class Test {
 
     }
 
-    private static void highSpeedAlert(String outputFileName) {
+    private static void highSpeedAlert(String outputFileName, String OUTPUT_FOLDER_PATH) {
+
         // Once the stream is parsed filter those tuples whose speed (2nf field!) is larger or equal than 90
         DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> highSpeedFines = parsedStream
                 .filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
@@ -75,11 +77,11 @@ public class Test {
         highSpeedFines.writeAsCsv(OUTPUT_FOLDER_PATH + outputFileName);
     }
 
-    private static void avgSpeedAlert(String outputFileName) {
+    private static void avgSpeedAlert(String outputFileName, String OUTPUT_FOLDER_PATH) {
         // TODO: implementation
     }
 
-    private static void collisionAlert(String outputFileName) {
+    private static void collisionAlert(String outputFileName, String OUTPUT_FOLDER_PATH) {
         // TODO: implementation
     }
 
