@@ -20,15 +20,21 @@ public class Test {
     private static final int SEG_FIELD = 6;
     private static final int POS_FIELD = 7;
 
+    // TODO: !!! CHANGE HERE YOUR DEFAULT INPUT AND OUTPUT FOLDERS  !!!!!
+    private static final String INPUT_FOLDER_PATH = "/media/sf_Shared2Ubuntu/flink/project/data/in/";
+    private static final String OUTPUT_FOLDER_PATH = "/media/sf_Shared2Ubuntu/flink/project/data/out/";
+
+    private static DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream;
+
     public static void main(String[] args) {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         // Import the file TODO: change input filepath
-        DataStreamSource<String> stream = env.readTextFile("/media/sf_Shared2Ubuntu/traffic-3xways.txt");
+        DataStreamSource<String> stream = env.readTextFile(INPUT_FOLDER_PATH + "traffic-3xways.txt");
 
         // Map all the lines (String) to a tuple of 8 elements consisting of the converted fields (String -> Integer)
-        DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream = stream
+        parsedStream = stream
                 .map(new MapFunction<String, Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
                     @Override
                     public Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(String s) throws Exception {
@@ -39,16 +45,11 @@ public class Test {
                                     new Integer(fields[6]), new Integer(fields[7]));
                     }});
 
-        // Once the stream is parsed filter those tuples whose speed (2nf field!) is larger or equal than 90
-        DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> highSpeedFines = parsedStream
-                .filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
-                    @Override
-                    public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> tuple) throws Exception {
-                        return tuple.f2 >= 90;
-                    }});
+        highSpeedAlert("highSpeedAlert.csv");
 
-        // Write the output into a new file TODO: change output filepath
-        highSpeedFines.writeAsCsv("/media/sf_Shared2Ubuntu/highFineSpeeds.csv");
+        avgSpeedAlert("avgSpeedAlert.csv");
+
+        collisionAlert("collisionAlert.csv");
 
         try {
             env.execute();
@@ -61,7 +62,30 @@ public class Test {
 
     }
 
+    private static void highSpeedAlert(String outputFileName) {
+        // Once the stream is parsed filter those tuples whose speed (2nf field!) is larger or equal than 90
+        DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> highSpeedFines = parsedStream
+                .filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+                    @Override
+                    public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> tuple) throws Exception {
+                        return tuple.f2 >= 90;
+                    }});
+
+        // Write the output into a new file TODO: change output filepath
+        highSpeedFines.writeAsCsv(OUTPUT_FOLDER_PATH + outputFileName);
+    }
+
+    private static void avgSpeedAlert(String outputFileName) {
+        // TODO: implementation
+    }
+
+    private static void collisionAlert(String outputFileName) {
+        // TODO: implementation
+    }
+
 }
+
+
 
 class Row2<T1, T2> extends Tuple2<Integer, Integer> {
     public Row2(Integer value0, Integer value1) {
