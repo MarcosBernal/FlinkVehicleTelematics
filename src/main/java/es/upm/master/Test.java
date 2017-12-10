@@ -70,9 +70,9 @@ public class Test {
 
 
         // Check for the alerts
-        //highSpeedAlert(OUTPUT_FOLDER_PATH + "speedfines.csv");
-        avgSpeedAlert(OUTPUT_FOLDER_PATH + "avgspeedfines003.csv");
-        //collisionAlert(OUTPUT_FOLDER_PATH + "accidents.csv");
+        highSpeedAlert(OUTPUT_FOLDER_PATH + "speedfines.csv");
+        avgSpeedAlert(OUTPUT_FOLDER_PATH + "avgspeedfines.csv");
+        collisionAlert(OUTPUT_FOLDER_PATH + "accidents.csv");
 
         try {
             env.execute();
