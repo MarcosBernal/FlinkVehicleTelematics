@@ -27,6 +27,12 @@ public class Test {
 
     public static void main(String[] args) {
 
+        if(args.length != 2){
+            System.out.println(">> Needs two arguments: \n\t - input_file_path \n\t - output_folder_path \n\n" +
+                    "Example of usage: \nmvn exec:java -Dexec.mainClass=\"es.upm.master.Test\" input_file_path output_folder_path");
+            System.exit(1);
+        }
+
         final String INPUT_FILE_PATH = args[0];
         final String OUTPUT_FOLDER_PATH = args[1];
 
@@ -70,9 +76,9 @@ public class Test {
 
 
         // Check for the alerts
-        highSpeedAlert(OUTPUT_FOLDER_PATH + "speedfines.csv");
-        avgSpeedAlert(OUTPUT_FOLDER_PATH + "avgspeedfines.csv");
-        collisionAlert(OUTPUT_FOLDER_PATH + "accidents.csv");
+        highSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv");
+        avgSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv");
+        collisionAlert(OUTPUT_FOLDER_PATH + "/" + "accidents.csv");
 
         try {
             env.execute();

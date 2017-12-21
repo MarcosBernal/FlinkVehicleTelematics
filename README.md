@@ -1,4 +1,5 @@
-(in construction)
+Limited program of Flink using Java 8 and maven 3.7 to detect vehicles illegal speed and movements.
+ The data is obtained by reading a file. Small sample in the traffic_data file.
 
 ## Requirements
 
@@ -11,7 +12,8 @@ Tested with ubuntu 16.04
 ## Steps to use
 
 - Start flink process: `i.e. /opt/flink-1.3.2/bin/start-cluster.sh`
-- Run processes...
+- Run processes:
+    -   `mvn exec:java -Dexec.mainClass="es.upm.master.Test" input_file_path output_file_path`   
 
 
 
