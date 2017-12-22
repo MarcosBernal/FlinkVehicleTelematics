@@ -3,22 +3,28 @@ Limited program of Flink using Java 8 and maven 3.7 to detect vehicles illegal s
 
 ## Requirements
 
+### Standalone version
 - flink >= 1.3.2
 - java >= 1.8
 - maven >= 3.7.0
+
+### Docker version
+- docker >= 17.09.1-ce
+
+
 
 Tested with ubuntu 16.04
 
 ## Steps to use
 
-### With flink installed
+### Standalone
 
 - Start flink process: `i.e. /opt/flink-1.3.2/bin/start-cluster.sh`
 - Compile the source code: `mvn clean install`
 - Run processes:
     -   `mvn exec:java -Dexec.mainClass="master2017.flink.VehicleTelematics" input_file_path output_file_path`   
 
-### With docker
+### Docker
 
 - Move to the repository folder: `cd FlinkVehicleTelematics`
 - Build the custom image: `sudo docker build -t ubuntu-flink .`

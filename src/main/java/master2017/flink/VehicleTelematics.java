@@ -377,6 +377,10 @@ public class VehicleTelematics {
             seg = firstEvent.f6;
             initPos = firstEvent.f7;
 
+            int event_number = 1;
+
+
+
             // Go on checking the other events in the window
             while(window.hasNext()){
 
@@ -388,10 +392,12 @@ public class VehicleTelematics {
                     return;
 
                 lastTime = event.f0;
+                event_number++;
             }
 
             // If all the events in the window have null speed and same position then output the alert
-            output.collect(new Tuple7<>(initTime, lastTime, id, xway, seg, dir, initPos));
+            if(event_number >= 4)
+                output.collect(new Tuple7<>(initTime, lastTime, id, xway, seg, dir, initPos));
 
         }
     }
