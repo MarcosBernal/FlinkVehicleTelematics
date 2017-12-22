@@ -4,6 +4,7 @@ import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.tuple.*;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
@@ -103,7 +104,7 @@ public class VehicleTelematics {
                     .filter(new HighSpeedFilter());     // only those with speed >= 90mph
 
         // Write the output into a new file
-        highSpeedFines.writeAsCsv(outputFilePath);
+        highSpeedFines.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
     }
 
     /** Re-arrange the old tuples so to have the following structure:
@@ -177,7 +178,7 @@ public class VehicleTelematics {
                 .map(new ComputeAvgSpeed())                                 // get the avg speed
                 .filter(new AvgSpeedFinesFilter());                         // get only those with avg speed >= 60mph
 
-        avgSpeedFines.writeAsCsv(outputFilePath);
+        avgSpeedFines.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
     }
 
     /** Remove all the events whose segment is not in between 52 and 56 */
@@ -335,7 +336,7 @@ public class VehicleTelematics {
                 .apply(new CheckForCollisions());                                               // check for collisions
 
         // Write the output into a new file
-        collisions.writeAsCsv(outputFilePath);
+        collisions.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
 
     }
 
