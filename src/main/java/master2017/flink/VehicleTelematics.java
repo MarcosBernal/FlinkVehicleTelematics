@@ -391,7 +391,9 @@ public class VehicleTelematics {
                 if (event == null || event.f7 != initPos)
                     return;
 
-                lastTime = event.f0;
+                // Events might be not send in order when parallel exec (sorting the time)
+                lastTime = (event.f0 > lastTime) ? event.f0 : lastTime;
+                initTime = (initTime > event.f0) ? event.f0 : initTime;
                 event_number++;
             }
 
