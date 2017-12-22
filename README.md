@@ -13,7 +13,7 @@ Tested with ubuntu 16.04
 
 - Start flink process: `i.e. /opt/flink-1.3.2/bin/start-cluster.sh`
 - Run processes:
-    -   `mvn exec:java -Dexec.mainClass="es.upm.master.Test" input_file_path output_file_path`   
+    -   `mvn exec:java -Dexec.mainClass="master2017.flink.VehicleTelematics" input_file_path output_file_path`   
 
 
 

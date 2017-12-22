@@ -1,4 +1,4 @@
-package es.upm.master;
+package master2017.flink;
 
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -20,7 +20,7 @@ import org.apache.flink.util.Collector;
 import java.util.HashSet;
 import java.util.Iterator;
 
-public class Test {
+public class VehicleTelematics {
 
     private static DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream;
     private static SingleOutputStreamOperator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedTimedStream;
@@ -29,7 +29,7 @@ public class Test {
 
         if(args.length != 2){
             System.out.println(">> Needs two arguments: \n\t - input_file_path \n\t - output_folder_path \n\n" +
-                    "Example of usage: \nmvn exec:java -Dexec.mainClass=\"es.upm.master.Test\" input_file_path output_folder_path");
+                    "Example of usage: \nmvn exec:java -Dexec.mainClass=\"master2017.flink.VehicleTelematics\" input_file_path output_folder_path");
             System.exit(1);
         }
 
