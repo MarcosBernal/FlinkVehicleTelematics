@@ -1,4 +1,4 @@
-# Flink 1.4, hadoop and Java8
+# Flink 1.3.2, hadoop and Java8
 #
 # VERSION               0.3
 
@@ -18,11 +18,11 @@ RUN apt-get install -y oracle-java8-installer
 
 RUN apt-get install -y maven
 
-RUN wget -O flink http://apache.rediris.es/flink/flink-1.4.0/flink-1.4.0-bin-hadoop28-scala_2.11.tgz
+RUN wget -O flink http://apache.rediris.es/flink/flink-1.3.2/flink-1.3.2-bin-hadoop27-scala_2.11.tgz
 RUN tar -xvzf flink -C /opt
 
 # Adding flink to path
-ENV PATH=$PATH:/opt/flink-1.4.0/bin
+ENV PATH=$PATH:/opt/flink-1.3.2/bin
 
 RUN mkdir /home/dev
 WORKDIR /home/dev
@@ -42,7 +42,7 @@ EXPOSE 6123
 RUN apt-get install -y nano
 
 # Setting 10 workers and default parallelism to 10 in flink cluster
-COPY flink-conf.yaml /opt/flink-1.4.0/conf/flink-conf.yaml
+COPY flink-conf.yaml /opt/flink-1.3.2/conf/flink-conf.yaml
 
 CMD start-cluster.sh > /dev/null & echo "Started flink cluster" & /bin/bash
 
