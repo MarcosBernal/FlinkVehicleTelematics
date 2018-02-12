@@ -50,7 +50,6 @@ public class VehicleTelematics {
 
 
 
-
         // Associate to the timestamp field an actual time in milliseconds that could be used for event windows
         parsedTimedStream = parsedStream
             .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple8<Integer, Integer, Integer, Integer,
@@ -97,11 +96,7 @@ public class VehicleTelematics {
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);                                                       // setPar to 1 to create only ONE file
 
-
-
         env.execute();
-
-
 
         System.out.println("=========================================================================================");
         System.out.println("=========================================================================================");
@@ -121,6 +116,7 @@ public class VehicleTelematics {
         public void apply(Tuple tuple, TimeWindow timeWindow,
                 Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> iterable,
                     Collector<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> collector) throws Exception {
+
 
             Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window = iterable.iterator();
             Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = null;
@@ -152,6 +148,8 @@ public class VehicleTelematics {
         }
     }
 
+
+
     //
     // 3rd ALERT
     //
@@ -182,8 +180,7 @@ public class VehicleTelematics {
         @Override
         public void apply(Tuple tuple, TimeWindow timeWindow,
                           Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> input,
-                          Collector<Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output)
-                throws Exception {
+                          Collector<Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output) {
 
             int initTime, lastTime, initPos, id, xway, dir, seg;
 
@@ -211,8 +208,6 @@ public class VehicleTelematics {
             initPos = firstEvent.f7;
 
             int event_number = 1;
-
-
 
             // Go on checking the other events in the window
             while(window.hasNext()){
