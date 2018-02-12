@@ -26,7 +26,7 @@ public class VehicleTelematics {
     private static DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream;
     private static SingleOutputStreamOperator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedTimedStream;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
 
         if(args.length != 2){
             System.out.println(">> Needs two arguments: \n\t - input_file_path \n\t - output_folder_path \n\n" +
@@ -41,26 +41,17 @@ public class VehicleTelematics {
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         // Import the file
-        DataStreamSource<String> stream = env.readTextFile(INPUT_FILE_PATH);
+        DataStreamSource<String> stream = env.readTextFile(INPUT_FILE_PATH).setParallelism(1); // Get rid of warning of Timestamp monotony violated -> sequential
 
         // Map all the rows (String) to a tuple of 8 elements consisting of the converted fields (String -> Integer)
         parsedStream = stream
-            .map(new MapFunction<String, Tuple8<Integer, Integer, Integer, Integer,
-                                                Integer, Integer, Integer, Integer>>() {
+            .map( tuple -> tuple.split(",")).setParallelism(1) // Get rid of warning of Timestamp monotony violated -> sequential
+            .map( fields -> new Tuple8<>( new Integer(fields[0]), new Integer(fields[1]), new Integer(fields[2]),
+                    new Integer(fields[3]), new Integer(fields[4]), new Integer(fields[5]),
+                    new Integer(fields[6]), new Integer(fields[7])))
+            .setParallelism(1); // Get rid of warning of Timestamp monotony violated -> sequential
 
-                @Override
-                public Tuple8<Integer, Integer, Integer, Integer,
-                              Integer, Integer, Integer, Integer> map(String row) {
 
-                    String fields[] = row.split(",");
-                    return new Tuple8<>(
-                            new Integer(fields[0]), new Integer(fields[1]), new Integer(fields[2]),
-                            new Integer(fields[3]), new Integer(fields[4]), new Integer(fields[5]),
-                            new Integer(fields[6]), new Integer(fields[7]));
-
-                }
-
-            });
 
         // Associate to the timestamp field an actual time in milliseconds that could be used for event windows
         parsedTimedStream = parsedStream
@@ -70,24 +61,25 @@ public class VehicleTelematics {
                 @Override
                 public long extractAscendingTimestamp(Tuple8<Integer, Integer, Integer, Integer,
                                                              Integer, Integer, Integer, Integer> tuple) {
-                    return (long) tuple.f0 * 1000;
+                    return tuple.f0 * 1000;
                 }
 
-            });
+            }).setParallelism(1); // Get rid of warning of Timestamp monotony violated -> sequential
 
 
         // Check for the alerts
         highSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv");
-        avgSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv");
-        collisionAlert(OUTPUT_FOLDER_PATH + "/" + "accidents.csv");
+        //avgSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv");
+        //collisionAlert(OUTPUT_FOLDER_PATH + "/" + "accidents.csv");
 
-        try {
-            env.execute();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+
+        env.execute();
+
+
 
         System.out.println("=========================================================================================");
+        System.out.println("=========================================================================================");
+
 
     }
 
@@ -99,40 +91,13 @@ public class VehicleTelematics {
 
     private static void highSpeedAlert(String outputFilePath) {
         DataStream<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> highSpeedFines
-                = parsedStream
-                    .map(new FormatHighSpeedFields())   // re-arrange the fields
-                    .filter(new HighSpeedFilter());     // only those with speed >= 90mph
+                = parsedTimedStream
+                    .keyBy(0) // Using the timestamp as key to split the dataset
+                    .filter( tuple -> tuple.f2 >= 90)     // only those with speed >= 90mph
+                    .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2));  // re-arrange the fields
 
         // Write the output into a new file
         highSpeedFines.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
-    }
-
-    /** Re-arrange the old tuples so to have the following structure:
-     * f0: timestamp
-     * f1: vehicle id
-     * f2: xway
-     * f3: segment
-     * f4: direction
-     * f5: speed
-     */
-    private static class FormatHighSpeedFields
-            implements MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>,
-            Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> {
-        @Override
-        public Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>
-        map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> oldTuple) {
-
-            return new Tuple6<>(oldTuple.f0, oldTuple.f1, oldTuple.f3, oldTuple.f6, oldTuple.f5, oldTuple.f2);
-        }
-    }
-
-    /** Keep only those tuples with speed >= 90mph */
-    private static class HighSpeedFilter
-            implements FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> {
-        @Override
-        public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> tuple) {
-            return tuple.f5 >= 90;
-        }
     }
 
     //
