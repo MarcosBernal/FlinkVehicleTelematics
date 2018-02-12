@@ -95,9 +95,9 @@ public class VehicleTelematics {
         //
 
         parsedTimedStream
-                .filter( tuple -> tuple.f2 == 0)
-                .keyBy(1, 3, 5)                                                             // key by id
-                .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4), Time.seconds(30)))     // get windows of 2min every 30secs
+                .filter( tuple -> tuple.f2 == 0)                                            // only vehicles with null speed can crash
+                .keyBy(1, 3, 5)                                                      // key by id, highway and direction
+                .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4), Time.seconds(30))) // get windows of 2min every 30secs
                 .apply(new CheckForCollisions())
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "accidents.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
@@ -144,13 +144,19 @@ public class VehicleTelematics {
                 count += 1;
                 segmentSet.add(event.f6);
                 oneway = (segmentSet.get(0) == 52 && segmentSet.get(segmentSet.size()-1) <= event.f6
-                        || segmentSet.get(0) == 56 && segmentSet.get(segmentSet.size()-1) >= event.f6) ? true : false; // One way means from 52 to 56 without return
+                        || segmentSet.get(0) == 56 && segmentSet.get(segmentSet.size()-1) >= event.f6) ? true : false;
+                // One way means from 52 to 56 without return
 
             }
 
-            if(oneway && segmentSet.contains(new Integer(52)) && segmentSet.contains(new Integer(53)) && segmentSet.contains(new Integer(54)) && segmentSet.contains(new Integer(55)) && segmentSet.contains(new Integer(56)))
-               if(speed/count >= 60) //Speed
-                   collector.collect(new Tuple6<>(minTime, maxTime, event.f1, event.f3, event.f5, speed/count));
+            if(oneway
+                    && segmentSet.contains(52)
+                    && segmentSet.contains(53)
+                    && segmentSet.contains(54)
+                    && segmentSet.contains(55)
+                    && segmentSet.contains(56)
+                    && speed/count >= 60) //Speed
+                collector.collect(new Tuple6<>(minTime, maxTime, event.f1, event.f3, event.f5, speed/count));
         }
     }
 
@@ -166,9 +172,9 @@ public class VehicleTelematics {
                           Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> input,
                           Collector<Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output) {
 
-            int initTime, lastTime, initPos, event_number;
+            int initTime, initPos, numberOfEvents;
 
-            // Get the current window (REMEMBER: it is keyed by ID!)
+            // Get the current window (REMEMBER: it is keyed by ID, Highway and Direction!)
             Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window
                     = input.iterator();
 
@@ -178,34 +184,32 @@ public class VehicleTelematics {
 
             // If the event is null or the speed is not 0
             //  then we cannot raise an alert for collision in the current window
-            if (event == null || event.f2 != 0)
+            if (event == null)
                 return;
 
             // If the event is valid, initialize some variables
             initTime = event.f0;
-            lastTime = initTime;
-
             initPos = event.f7;
 
-            event_number = 1;
+            // ...and count one event
+            numberOfEvents = 1;
 
             // Go on checking the other events in the window
-            while(window.hasNext() && event.f7 == initPos){ // Continue as long we have events,they are not null and keep position
+            while(window.hasNext()){
 
                 event = window.next();
 
-                if(event ==null)
+                // If the event is null or the car moved we cannot report an alert
+                if(event == null || event.f7 != initPos)
                     return;
 
-                // Events might be not send in order when parallel exec (sorting the time)
-                lastTime = event.f0; //(event.f0 > lastTime) ? event.f0 : lastTime;
-                //initTime = (initTime > event.f0) ? event.f0 : initTime;
-                event_number++;
+                // Otherwise we count it
+                numberOfEvents++;
             }
 
-            // If all the events in the window have null speed and same position then output the alert
-            if(event_number >= 4)
-                output.collect(new Tuple7<>(initTime, lastTime, event.f1, event.f3, event.f6, event.f5, initPos));
+            // if 4 or more events are reported in the same window, then report an alert
+            if(numberOfEvents >= 4)
+                output.collect(new Tuple7<>(initTime, event.f0, event.f1, event.f3, event.f6, event.f5, initPos));
 
         }
     }
