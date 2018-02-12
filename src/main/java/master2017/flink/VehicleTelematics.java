@@ -18,6 +18,7 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 
@@ -69,9 +70,24 @@ public class VehicleTelematics {
 
 
         // Check for the alerts
-        highSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv");
-        //avgSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv");
+        avgSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv");
         //collisionAlert(OUTPUT_FOLDER_PATH + "/" + "accidents.csv");
+
+
+
+
+    /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
+
+    //
+    // 1st ALERT highSpeedAlert
+    //
+
+    parsedTimedStream
+            .keyBy(0) // Using the timestamp as key to split the dataset
+            .filter( tuple -> tuple.f2 >= 90)     // only those with speed >= 90mph
+            .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2))  // re-arrange the fields
+            .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv", FileSystem.WriteMode.OVERWRITE).setParallelism(1);     // Write the output into a new file
+
 
 
         env.execute();
@@ -84,25 +100,8 @@ public class VehicleTelematics {
 
     }
 
-    /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
-
     //
-    // 1st ALERT
-    //
-
-    private static void highSpeedAlert(String outputFilePath) {
-        DataStream<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> highSpeedFines
-                = parsedTimedStream
-                    .keyBy(0) // Using the timestamp as key to split the dataset
-                    .filter( tuple -> tuple.f2 >= 90)     // only those with speed >= 90mph
-                    .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2));  // re-arrange the fields
-
-        // Write the output into a new file
-        highSpeedFines.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
-    }
-
-    //
-    // 2nd ALERT
+    // 2nd ALERT avgSpeedAlert
     //
 
     private static final int ENTRY_SEGMENT = 52;
@@ -110,176 +109,56 @@ public class VehicleTelematics {
 
     private static void avgSpeedAlert(String outputFilePath) {
 
-        SingleOutputStreamOperator<Tuple6<Integer, Integer, Integer, Integer, Integer, Double>> avgSpeedFines
-            = parsedStream
-                .filter(new SegmentFilter())        // get only those in between 52 and 56
-                .map(new FormatAvgSpeedFields())    // re-arrange and add some fields
-                .keyBy(2, 4)                 // key by id and direction
-                .reduce(new UpdateFields())         // get the first and last timestamp, speeds sum and total count
-                .filter(new ContainsAllSegments())  // only those who travelled all the segments
+        SingleOutputStreamOperator<Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>>   avgVariable =
+        parsedTimedStream
+        .filter(event -> event.f6 >= ENTRY_SEGMENT && event.f6 <= EXIT_SEGMENT)   // get only those in between 52 and 56
+        .keyBy(1, 3, 5)                                         // key by id, xway and direction
+        .window(EventTimeSessionWindows.withGap(Time.seconds(31)))  // get windows
+        .apply(new ComputeWindowEvent());                       // get the tuple if vehicle went by all segments and avg speed >= 60mph
 
-                /*
-                 At this point we have filtered out all the cars that did not travel through all the segments.
-                 However, for those who did travel, the reduce function created a new line with a new timestamp for
-                 any event registered in the last segments (52 or 56, depending on the direction). For this reason we
-                 have to report only the events with the highest exit time for every car and direction and discard the
-                 others. To do this we key by id and direction, we create sessions that close as soon no new data is
-                 available and only at that point we iterate over the window to get the very last event.
-                 */
-
-                .assignTimestampsAndWatermarks(
-                        new AscendingTimestampExtractor<Tuple8<Integer, Integer, Integer, Integer,
-                                                               Integer, Integer, Integer, HashSet<Integer>>>() {
-                    @Override
-                    public long extractAscendingTimestamp(
-                            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>> tuple) {
-                        return (long) tuple.f1 * 1000;
-                    }
-                })                                                          // consider the exit timestamps
-                .keyBy(2, 4)                                         // key by id and direction
-                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))  // get windows
-                .apply(new GetLastWindowEvent())                            // get the very last event of the window
-                .map(new ComputeAvgSpeed())                                 // get the avg speed
-                .filter(new AvgSpeedFinesFilter());                         // get only those with avg speed >= 60mph
-
-        avgSpeedFines.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
+        avgVariable.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
     }
 
-    /** Remove all the events whose segment is not in between 52 and 56 */
-    private static class SegmentFilter
-            implements FilterFunction<Tuple8<Integer, Integer, Integer, Integer,
-            Integer, Integer, Integer, Integer>> {
-
-        @Override
-        public boolean filter(Tuple8<Integer, Integer, Integer, Integer,
-                Integer, Integer, Integer, Integer> event)
-                throws Exception {
-
-            return (event.f6 >= ENTRY_SEGMENT && event.f6 <= EXIT_SEGMENT);
-        }
-    }
-
-    /** Re-arrange the old tuples so to have the following structure:
-     * f0: smallest timestamp (recorded by the vehicle in the segments 52-56)
-     * f1: highest timestamp (recorded by the vehicle in the segments 52-56)
-     * f2: vehicle id
-     * f3: xway
-     * f4: direction
-     * f5: speed total (i.e. simple sum of all the speeds recorded in segments 52-56)
-     * f6: a simple count
-     * f7: segment set (i.e. a set of all the segments crossed by the vehicle)
+    /**  0      1      2     3    4     5    6   7
+     *  Time,  VID,   Spd, XWay, Lane, Dir, Seg, Pos
+     *  Time1, Time2, VID, XWay, Dir,  AvgSpd
      */
-    private static class FormatAvgSpeedFields
-            implements MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>,
-                                   Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> {
+    private static class ComputeWindowEvent
+            implements WindowFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>,
+            Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>, Tuple, TimeWindow> {
 
         @Override
-        public Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>
-                map(Tuple8<Integer, Integer, Integer, Integer,
-                           Integer, Integer, Integer, Integer> oldTuple)
-                throws Exception {
+        public void apply(Tuple tuple, TimeWindow timeWindow,
+                Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> iterable,
+                    Collector<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> collector) throws Exception {
 
-            HashSet<Integer> segmentSet = new HashSet<>();
-            segmentSet.add(oldTuple.f6);
+            Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window = iterable.iterator();
+            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = null;
 
-            return new Tuple8<>(oldTuple.f0, oldTuple.f0, oldTuple.f1, oldTuple.f3,
-                                oldTuple.f5, oldTuple.f2, 1, segmentSet);
+            int count = 0;
+            int speed = 0;
+            int minTime = Integer.MAX_VALUE;
+            int maxTime = 0;
+            boolean oneway = true;
+            ArrayList<Integer> segmentSet = new ArrayList<Integer>();
 
-        }
-    }
+            while (window.hasNext() && oneway) {
+                event = window.next();
 
-    /** Reduce a stream keyed by id and direction so to:
-     * - get the minimum timestamp recorded
-     * - get the maximum timestamp recorded
-     * - get the sum of all the speeds
-     * - get the sum of all the counts
-     * - get a set of all the segments
-     */
-    private static class UpdateFields
-            implements ReduceFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> {
+                minTime = (event.f0 <= minTime) ? event.f0 : minTime;
+                maxTime = (event.f0 >= maxTime) ? event.f0 : maxTime;
 
-        @Override
-        public Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>
-            reduce(Tuple8<Integer, Integer, Integer, Integer,
-                          Integer, Integer, Integer, HashSet<Integer>> tuple1,
-                   Tuple8<Integer, Integer, Integer, Integer,
-                          Integer, Integer, Integer, HashSet<Integer>> tuple2) throws Exception {
+                speed += event.f2;
+                count += 1;
+                segmentSet.add(event.f6);
+                oneway = (segmentSet.get(0) == 52 && segmentSet.get(segmentSet.size()-1) <= event.f6
+                        || segmentSet.get(0) == 56 && segmentSet.get(segmentSet.size()-1) >= event.f6) ? true : false; // One way means from 52 to 56 without return
 
-            int minTime = (tuple1.f0 <= tuple2.f0) ? tuple1.f0 : tuple2.f0;
-            int maxTime = (tuple1.f1 >= tuple2.f1) ? tuple1.f1 : tuple2.f1;
-
-            int speed = tuple1.f5 + tuple2.f5;
-            int count = tuple1.f6 + tuple2.f6;
-
-            HashSet<Integer> segmentSet = tuple1.f7;
-            segmentSet.addAll(tuple2.f7);
-
-            return new Tuple8<>(minTime, maxTime, tuple1.f2, tuple1.f3, tuple1.f4, speed, count, segmentSet);
-
-        }
-
-    }
-
-    /** Discard all the tuples whose segment set does not contain all the relevant segments (i.e. 52, 53, 54, 55, 56) */
-    private static class ContainsAllSegments
-            implements FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> {
-        final Integer[] allSegments = {52, 53, 54, 55, 56};
-
-        @Override
-        public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>> tuple)
-                throws Exception {
-
-            for (Integer segment : allSegments) {
-                if (!tuple.f7.contains(segment))
-                    return false;
             }
 
-            return true;
-        }
-    }
-
-    private static class GetLastWindowEvent
-            implements WindowFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>,
-            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>,
-            Tuple, TimeWindow> {
-
-        @Override
-        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> iterable, Collector<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> collector) throws Exception {
-            Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> window = iterable.iterator();
-            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>> lastWindowEvent = null;
-
-            while (window.hasNext()) {
-                lastWindowEvent = window.next();
-            }
-
-            collector.collect(lastWindowEvent);
-        }
-    }
-
-    /** Given the tuples with the sum of all the speeds and the total count of events recorded, return the tuples with
-     * the avg speed.
-     */
-    private static class ComputeAvgSpeed
-            implements MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>,
-            Tuple6<Integer, Integer, Integer, Integer, Integer, Double>> {
-
-        @Override
-        public Tuple6<Integer, Integer, Integer, Integer, Integer, Double>
-        map(Tuple8<Integer, Integer, Integer, Integer,
-                Integer, Integer, Integer, HashSet<Integer>> oldTuple)
-                throws Exception {
-
-            return new Tuple6<>(oldTuple.f0, oldTuple.f1, oldTuple.f2, oldTuple.f3, oldTuple.f4,
-                    (double) (oldTuple.f5 / oldTuple.f6));
-        }
-    }
-
-    /** Filter all the tuples whose avg speed is not above 60 mph */
-    private static class AvgSpeedFinesFilter
-            implements FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Double>> {
-        @Override
-        public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Double> tuple) throws Exception {
-            return tuple.f5 >= 60;
+            if(oneway && segmentSet.contains(new Integer(52)) && segmentSet.contains(new Integer(53)) && segmentSet.contains(new Integer(54)) && segmentSet.contains(new Integer(55)) && segmentSet.contains(new Integer(56)))
+               if(speed/count >= 60) //Speed
+                   collector.collect(new Tuple6<>(minTime, maxTime, event.f1, event.f3, event.f5, speed/count));
         }
     }
 
