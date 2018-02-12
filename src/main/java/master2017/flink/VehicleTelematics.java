@@ -1,8 +1,5 @@
 package master2017.flink;
 
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.tuple.*;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -19,7 +16,6 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 
 public class VehicleTelematics {
@@ -70,23 +66,36 @@ public class VehicleTelematics {
 
 
         // Check for the alerts
-        avgSpeedAlert(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv");
         //collisionAlert(OUTPUT_FOLDER_PATH + "/" + "accidents.csv");
 
 
 
 
-    /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
+        /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
 
-    //
-    // 1st ALERT highSpeedAlert
-    //
+        //
+        // 1st ALERT highSpeedAlert
+        //
 
-    parsedTimedStream
-            .keyBy(0) // Using the timestamp as key to split the dataset
-            .filter( tuple -> tuple.f2 >= 90)     // only those with speed >= 90mph
-            .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2))  // re-arrange the fields
-            .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv", FileSystem.WriteMode.OVERWRITE).setParallelism(1);     // Write the output into a new file
+        parsedTimedStream
+                .keyBy(0)                                                                                // Using the timestamp as key to split the dataset
+                .filter( tuple -> tuple.f2 >= 90)                                                               // only those with speed >= 90mph
+                .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2))        // re-arrange the fields
+                .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv", FileSystem.WriteMode.OVERWRITE)   // Write the output into a new file
+                .setParallelism(1);                                                                             // setPar to 1 to create only ONE file
+
+
+        //
+        // 2nd ALERT avgSpeedAlert
+        //
+
+        parsedTimedStream
+                .filter(event -> event.f6 >= 52 && event.f6 <= 56)                        // get only those in between 52 and 56
+                .keyBy(1, 3, 5)                                                    // key by id, xway and direction
+                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows
+                .apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
+                .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);                                                       // setPar to 1 to create only ONE file
 
 
 
@@ -98,25 +107,6 @@ public class VehicleTelematics {
         System.out.println("=========================================================================================");
 
 
-    }
-
-    //
-    // 2nd ALERT avgSpeedAlert
-    //
-
-    private static final int ENTRY_SEGMENT = 52;
-    private static final int EXIT_SEGMENT = 56;
-
-    private static void avgSpeedAlert(String outputFilePath) {
-
-        SingleOutputStreamOperator<Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>>   avgVariable =
-        parsedTimedStream
-        .filter(event -> event.f6 >= ENTRY_SEGMENT && event.f6 <= EXIT_SEGMENT)   // get only those in between 52 and 56
-        .keyBy(1, 3, 5)                                         // key by id, xway and direction
-        .window(EventTimeSessionWindows.withGap(Time.seconds(31)))  // get windows
-        .apply(new ComputeWindowEvent());                       // get the tuple if vehicle went by all segments and avg speed >= 60mph
-
-        avgVariable.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
     }
 
     /**  0      1      2     3    4     5    6   7
