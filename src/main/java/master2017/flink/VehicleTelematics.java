@@ -66,7 +66,7 @@ public class VehicleTelematics {
 
         /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
 
-
+/*
         // 1st ALERT highSpeedAlert
         //
 
@@ -89,13 +89,14 @@ public class VehicleTelematics {
                 .apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);                                                       // setPar to 1 to create only ONE file
-
+*/
         //
         // 3rd ALERT
         //
 
         parsedTimedStream
-                .keyBy(1)                                                                // key by id
+                .filter( tuple -> tuple.f2 == 0)
+                .keyBy(1, 3, 5)                                                             // key by id
                 .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4), Time.seconds(30)))     // get windows of 2min every 30secs
                 .apply(new CheckForCollisions())
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "accidents.csv", FileSystem.WriteMode.OVERWRITE)
@@ -165,52 +166,46 @@ public class VehicleTelematics {
                           Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> input,
                           Collector<Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output) {
 
-            int initTime, lastTime, initPos, id, xway, dir, seg;
+            int initTime, lastTime, initPos, event_number;
 
             // Get the current window (REMEMBER: it is keyed by ID!)
             Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window
                     = input.iterator();
 
             // Get the first event of the window
-            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> firstEvent
+            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event
                     = window.next();
 
             // If the event is null or the speed is not 0
             //  then we cannot raise an alert for collision in the current window
-            if (firstEvent == null || firstEvent.f2 != 0)
+            if (event == null || event.f2 != 0)
                 return;
 
             // If the event is valid, initialize some variables
-            initTime = firstEvent.f0;
+            initTime = event.f0;
             lastTime = initTime;
 
-            id = firstEvent.f1;
-            xway = firstEvent.f3;
-            dir = firstEvent. f5;
-            seg = firstEvent.f6;
-            initPos = firstEvent.f7;
+            initPos = event.f7;
 
-            int event_number = 1;
+            event_number = 1;
 
             // Go on checking the other events in the window
-            while(window.hasNext()){
+            while(window.hasNext() && event.f7 == initPos){ // Continue as long we have events,they are not null and keep position
 
-                Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = window.next();
+                event = window.next();
 
-                // If the event is null or the current position is not the same as the original position
-                //  then we cannot raise an alert in the current window
-                if (event == null || event.f7 != initPos)
+                if(event ==null)
                     return;
 
                 // Events might be not send in order when parallel exec (sorting the time)
-                lastTime = (event.f0 > lastTime) ? event.f0 : lastTime;
-                initTime = (initTime > event.f0) ? event.f0 : initTime;
+                lastTime = event.f0; //(event.f0 > lastTime) ? event.f0 : lastTime;
+                //initTime = (initTime > event.f0) ? event.f0 : initTime;
                 event_number++;
             }
 
             // If all the events in the window have null speed and same position then output the alert
             if(event_number >= 4)
-                output.collect(new Tuple7<>(initTime, lastTime, id, xway, seg, dir, initPos));
+                output.collect(new Tuple7<>(initTime, lastTime, event.f1, event.f3, event.f6, event.f5, initPos));
 
         }
     }
