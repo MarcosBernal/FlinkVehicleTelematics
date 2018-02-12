@@ -50,7 +50,7 @@ public class VehicleTelematics {
 
                 @Override
                 public Tuple8<Integer, Integer, Integer, Integer,
-                              Integer, Integer, Integer, Integer> map(String row) throws Exception {
+                              Integer, Integer, Integer, Integer> map(String row) {
 
                     String fields[] = row.split(",");
                     return new Tuple8<>(
@@ -120,8 +120,7 @@ public class VehicleTelematics {
             Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> {
         @Override
         public Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>
-        map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> oldTuple)
-                throws Exception {
+        map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> oldTuple) {
 
             return new Tuple6<>(oldTuple.f0, oldTuple.f1, oldTuple.f3, oldTuple.f6, oldTuple.f5, oldTuple.f2);
         }
@@ -131,8 +130,7 @@ public class VehicleTelematics {
     private static class HighSpeedFilter
             implements FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> {
         @Override
-        public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> tuple)
-                throws Exception {
+        public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> tuple) {
             return tuple.f5 >= 90;
         }
     }
@@ -188,8 +186,7 @@ public class VehicleTelematics {
 
         @Override
         public boolean filter(Tuple8<Integer, Integer, Integer, Integer,
-                Integer, Integer, Integer, Integer> event)
-                throws Exception {
+                Integer, Integer, Integer, Integer> event) {
 
             return (event.f6 >= ENTRY_SEGMENT && event.f6 <= EXIT_SEGMENT);
         }
@@ -212,8 +209,7 @@ public class VehicleTelematics {
         @Override
         public Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>
                 map(Tuple8<Integer, Integer, Integer, Integer,
-                           Integer, Integer, Integer, Integer> oldTuple)
-                throws Exception {
+                           Integer, Integer, Integer, Integer> oldTuple) {
 
             HashSet<Integer> segmentSet = new HashSet<>();
             segmentSet.add(oldTuple.f6);
@@ -239,7 +235,7 @@ public class VehicleTelematics {
             reduce(Tuple8<Integer, Integer, Integer, Integer,
                           Integer, Integer, Integer, HashSet<Integer>> tuple1,
                    Tuple8<Integer, Integer, Integer, Integer,
-                          Integer, Integer, Integer, HashSet<Integer>> tuple2) throws Exception {
+                          Integer, Integer, Integer, HashSet<Integer>> tuple2) {
 
             int minTime = (tuple1.f0 <= tuple2.f0) ? tuple1.f0 : tuple2.f0;
             int maxTime = (tuple1.f1 >= tuple2.f1) ? tuple1.f1 : tuple2.f1;
@@ -262,8 +258,7 @@ public class VehicleTelematics {
         final Integer[] allSegments = {52, 53, 54, 55, 56};
 
         @Override
-        public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>> tuple)
-                throws Exception {
+        public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>> tuple) {
 
             for (Integer segment : allSegments) {
                 if (!tuple.f7.contains(segment))
@@ -280,7 +275,7 @@ public class VehicleTelematics {
             Tuple, TimeWindow> {
 
         @Override
-        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> iterable, Collector<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> collector) throws Exception {
+        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> iterable, Collector<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> collector) {
             Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>>> window = iterable.iterator();
             Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, HashSet<Integer>> lastWindowEvent = null;
 
@@ -302,8 +297,7 @@ public class VehicleTelematics {
         @Override
         public Tuple6<Integer, Integer, Integer, Integer, Integer, Double>
         map(Tuple8<Integer, Integer, Integer, Integer,
-                Integer, Integer, Integer, HashSet<Integer>> oldTuple)
-                throws Exception {
+                Integer, Integer, Integer, HashSet<Integer>> oldTuple) {
 
             return new Tuple6<>(oldTuple.f0, oldTuple.f1, oldTuple.f2, oldTuple.f3, oldTuple.f4,
                     (double) (oldTuple.f5 / oldTuple.f6));
@@ -314,7 +308,7 @@ public class VehicleTelematics {
     private static class AvgSpeedFinesFilter
             implements FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Double>> {
         @Override
-        public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Double> tuple) throws Exception {
+        public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Double> tuple) {
             return tuple.f5 >= 60;
         }
     }
@@ -349,8 +343,7 @@ public class VehicleTelematics {
         @Override
         public void apply(Tuple tuple, TimeWindow timeWindow,
                           Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> input,
-                          Collector<Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output)
-                throws Exception {
+                          Collector<Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output) {
 
             int initTime, lastTime, initPos, id, xway, dir, seg;
 
