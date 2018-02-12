@@ -64,15 +64,9 @@ public class VehicleTelematics {
             }).setParallelism(1); // Get rid of warning of Timestamp monotony violated -> sequential
 
 
-        // Check for the alerts
-        //collisionAlert(OUTPUT_FOLDER_PATH + "/" + "accidents.csv");
-
-
-
-
         /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
 
-        //
+
         // 1st ALERT highSpeedAlert
         //
 
@@ -95,6 +89,17 @@ public class VehicleTelematics {
                 .apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);                                                       // setPar to 1 to create only ONE file
+
+        //
+        // 3rd ALERT
+        //
+
+        parsedTimedStream
+                .keyBy(1)                                                                // key by id
+                .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4), Time.seconds(30)))     // get windows of 2min every 30secs
+                .apply(new CheckForCollisions())
+                .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "accidents.csv", FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);
 
         env.execute();
 
@@ -148,28 +153,6 @@ public class VehicleTelematics {
         }
     }
 
-
-
-    //
-    // 3rd ALERT
-    //
-
-    private static void collisionAlert(String outputFilePath) {
-
-        // Once the stream is parsed and has time associated to it,
-        // 1) group the events in the stream by ID
-        // 2) check for collisions in 2mins-sized windows every 30secs
-        SingleOutputStreamOperator<Tuple7<Integer, Integer, Integer,
-                                          Integer, Integer, Integer, Integer>> collisions
-            = parsedTimedStream
-                .keyBy(1)                                                                // key by id
-                .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4), Time.seconds(30)))     // get windows of 2min every 30secs
-                .apply(new CheckForCollisions());                                               // check for collisions
-
-        // Write the output into a new file
-        collisions.writeAsCsv(outputFilePath, FileSystem.WriteMode.OVERWRITE).setParallelism(1);
-
-    }
 
     /** Given a window of 2mins of events keyed by id, checks if any collision happened in those 2 minutes */
     private static class CheckForCollisions
