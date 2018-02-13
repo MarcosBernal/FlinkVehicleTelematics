@@ -15,7 +15,6 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 
 public class VehicleTelematics {
@@ -43,9 +42,9 @@ public class VehicleTelematics {
         // Map all the rows (String) to a tuple of 8 elements consisting of the converted fields (String -> Integer)
         parsedStream = stream
             .map( tuple -> tuple.split(",")).setParallelism(1) // Get rid of warning of Timestamp monotony violated -> sequential
-            .map( fields -> new Tuple8<>( new Integer(fields[0]), new Integer(fields[1]), new Integer(fields[2]),
-                    new Integer(fields[3]), new Integer(fields[4]), new Integer(fields[5]),
-                    new Integer(fields[6]), new Integer(fields[7])))
+            .map( fields -> new Tuple8<>( Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), Integer.parseInt(fields[2]),
+                    Integer.parseInt(fields[3]), Integer.parseInt(fields[4]), Integer.parseInt(fields[5]),
+                    Integer.parseInt(fields[6]), Integer.parseInt(fields[7])))
             .setParallelism(1); // Get rid of warning of Timestamp monotony violated -> sequential
 
 
@@ -66,7 +65,7 @@ public class VehicleTelematics {
 
         /* ALERTS IMPLEMENTATIONS *****************************************************************************************/
 
-/*
+
         // 1st ALERT highSpeedAlert
         //
 
@@ -85,11 +84,13 @@ public class VehicleTelematics {
         parsedTimedStream
                 .filter(event -> event.f6 >= 52 && event.f6 <= 56)                        // get only those in between 52 and 56
                 .keyBy(1, 3, 5)                                                    // key by id, xway and direction
-                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows
+                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows assuming Timestamp monotony
                 .apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);                                                       // setPar to 1 to create only ONE file
-*/
+
+        
+        //
         //
         // 3rd ALERT
         //
@@ -114,49 +115,47 @@ public class VehicleTelematics {
      *  Time,  VID,   Spd, XWay, Lane, Dir, Seg, Pos
      *  Time1, Time2, VID, XWay, Dir,  AvgSpd
      */
-    private static class ComputeWindowEvent
+
+    private static int EAST = 0;
+    private static int WEST = 1;
+
+
+    private static class ComputeWindowEvent // Assumed Timestamp monotony
             implements WindowFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>,
             Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>, Tuple, TimeWindow> {
 
         @Override
         public void apply(Tuple tuple, TimeWindow timeWindow,
                 Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> iterable,
-                    Collector<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> collector) throws Exception {
+                    Collector<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> collector) {
 
 
             Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window = iterable.iterator();
-            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = null;
+            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = window.next();
 
-            int count = 0;
+            int count = 1;
             int speed = 0;
-            int minTime = Integer.MAX_VALUE;
-            int maxTime = 0;
-            boolean oneway = true;
-            ArrayList<Integer> segmentSet = new ArrayList<Integer>();
+            int minTime = event.f0;
+            int previous_seg = event.f6;
+            boolean oneway = (event.f5 == EAST && previous_seg == 52 || event.f5 == WEST && previous_seg == 56) ? true : false;
+
 
             while (window.hasNext() && oneway) {
                 event = window.next();
 
-                minTime = (event.f0 <= minTime) ? event.f0 : minTime;
-                maxTime = (event.f0 >= maxTime) ? event.f0 : maxTime;
-
                 speed += event.f2;
                 count += 1;
-                segmentSet.add(event.f6);
-                oneway = (segmentSet.get(0) == 52 && segmentSet.get(segmentSet.size()-1) <= event.f6
-                        || segmentSet.get(0) == 56 && segmentSet.get(segmentSet.size()-1) >= event.f6) ? true : false;
+                oneway = (event.f5 == EAST && previous_seg >= event.f6-1 ||
+                            event.f5 == WEST && previous_seg <= event.f6+1) ? true : false;
+
+                previous_seg = event.f6;
                 // One way means from 52 to 56 without return
 
             }
 
-            if(oneway
-                    && segmentSet.contains(52)
-                    && segmentSet.contains(53)
-                    && segmentSet.contains(54)
-                    && segmentSet.contains(55)
-                    && segmentSet.contains(56)
-                    && speed/count >= 60) //Speed
-                collector.collect(new Tuple6<>(minTime, maxTime, event.f1, event.f3, event.f5, speed/count));
+            if(oneway && speed/count >= 60
+                    && (event.f5 == EAST && event.f6 == 56 || event.f5 == WEST && event.f6 == 52)) //Speed
+                collector.collect(new Tuple6<>(minTime, event.f0, event.f1, event.f3, event.f5, speed/count));
         }
     }
 
