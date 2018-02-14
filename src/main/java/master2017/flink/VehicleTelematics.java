@@ -131,9 +131,15 @@ public class VehicleTelematics {
                 .filter(tuple -> tuple.f5 >= 60)
 
                 // keep the latest maxTime tuple (DOES NOT WORK AS EXPECT
-                .keyBy(2,3,4).reduce((tuple1, tuple2) -> (tuple1.f1 > tuple2.f1) ? tuple1 : tuple2)
+                .keyBy(2,3,4)
+                .reduce((tuple1, tuple2) -> (tuple1.f1 > tuple2.f1) ? tuple1 : tuple2)
 
                 /*
+                // get only those in between 52 and 56
+                .filter(event -> event.f6 >= 52 && event.f6 <= 56)
+
+                .keyBy(1,3,5)
+
                 // get event windows that close as soon as a car doesn't give information for more than 30 secs
                 .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
 
