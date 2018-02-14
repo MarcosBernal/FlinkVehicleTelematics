@@ -15,6 +15,7 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 
 public class VehicleTelematics {
@@ -70,7 +71,6 @@ public class VehicleTelematics {
         //
 
         parsedTimedStream
-                .keyBy(0)                                                                                // Using the timestamp as key to split the dataset
                 .filter( tuple -> tuple.f2 >= 90)                                                               // only those with speed >= 90mph
                 .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2))        // re-arrange the fields
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "speedfines.csv", FileSystem.WriteMode.OVERWRITE)   // Write the output into a new file
@@ -82,7 +82,10 @@ public class VehicleTelematics {
         //
 
         parsedTimedStream
-                .filter(event -> event.f6 >= 52 && event.f6 <= 56)                        // get only those in between 52 and 56
+                .filter(event -> event.f6 >= 52 && event.f6 <= 56 &&                      // get only those in between 52 and 56
+                            ( (event.f4 > 0 && event.f4 < 4)                                // and only vehicles that are in the travel lane
+                                || (event.f6 == 52 && event.f4 < 4)                           // except if vehicle enters in seg 52
+                                || (event.f6 == 56 && event.f4 > 0)))                         // or exits on seg 56
                 .keyBy(1, 3, 5)                                                    // key by id, xway and direction
                 .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows assuming Timestamp monotony
                 .apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
@@ -131,31 +134,26 @@ public class VehicleTelematics {
 
 
             Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window = iterable.iterator();
-            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = window.next();
+            Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event = null;
 
-            int count = 1;
+            int count = 0;
             int speed = 0;
-            int minTime = event.f0;
-            int previous_seg = event.f6;
-            boolean oneway = (event.f5 == EAST && previous_seg == 52 || event.f5 == WEST && previous_seg == 56) ? true : false;
+            int minTime = Integer.MAX_VALUE;
+            int maxTime = 0;
+            ArrayList<Integer> segments = new ArrayList<>();
 
-
-            while (window.hasNext() && oneway) {
+            while(window.hasNext()){
                 event = window.next();
-
-                speed += event.f2;
                 count += 1;
-                oneway = (event.f5 == EAST && previous_seg >= event.f6-1 ||
-                            event.f5 == WEST && previous_seg <= event.f6+1) ? true : false;
-
-                previous_seg = event.f6;
-                // One way means from 52 to 56 without return
-
+                speed += event.f2;
+                if(!segments.contains(event.f6)) segments.add(event.f6);
+                minTime = (event.f5 == EAST && event.f6 == 52 || event.f5 == WEST && event.f6 == 56) ? event.f0 : minTime;
+                maxTime = (event.f5 == EAST && event.f6 == 56 || event.f5 == WEST && event.f6 == 52) ? event.f0 : maxTime;
             }
 
-            if(oneway && speed/count >= 60
-                    && (event.f5 == EAST && event.f6 == 56 || event.f5 == WEST && event.f6 == 52)) //Speed
-                collector.collect(new Tuple6<>(minTime, event.f0, event.f1, event.f3, event.f5, speed/count));
+            if(speed/count >= 60 && minTime < maxTime && segments.size() == 5) //Speed
+                collector.collect(new Tuple6<>(minTime, maxTime, event.f1, event.f3, event.f5, speed/count));
+
         }
     }
 
