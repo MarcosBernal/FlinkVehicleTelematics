@@ -75,7 +75,7 @@ public class VehicleTelematics {
         // 1st ALERT - highSpeedAlert
         //
 
-        /*
+        
         parsedTimedStream
                 // keep only those with speed >= 90mph
                 .filter( tuple -> tuple.f2 >= 90)
@@ -89,7 +89,7 @@ public class VehicleTelematics {
 
                 // set parallelism to 1 to create only ONE file
                 .setParallelism(1);
-        */
+
 
         //
         // 2nd ALERT - avgSpeedAlert
@@ -154,7 +154,7 @@ public class VehicleTelematics {
                 // set parallelism to 1 to create only ONE file
                 .setParallelism(1);
 
-        /*
+
         //
         // 3rd ALERT - collisionAlert
         //
@@ -179,7 +179,7 @@ public class VehicleTelematics {
 
                 // set parallelism to 1 to create only ONE file
                 .setParallelism(1);
-        */
+
 
         env.execute();
 
