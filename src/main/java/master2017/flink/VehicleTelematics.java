@@ -132,6 +132,7 @@ public class VehicleTelematics {
 
                 // keep the latest maxTime tuple (DOES NOT WORK AS EXPECT
                 .keyBy(2,3,4)
+                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
                 .reduce((tuple1, tuple2) -> (tuple1.f1 > tuple2.f1) ? tuple1 : tuple2)
 
                 /*
