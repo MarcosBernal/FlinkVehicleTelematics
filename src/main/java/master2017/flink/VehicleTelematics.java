@@ -48,7 +48,8 @@ public class VehicleTelematics {
         parsedStream = stream
             .map( tuple -> tuple.split(","))
             .setParallelism(1) // Get rid of warning of Timestamp monotony violated -> sequential
-            .map( fields -> new Tuple8<>( Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), Integer.parseInt(fields[2]),
+            .map( fields -> new Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>(
+                    Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), Integer.parseInt(fields[2]),
                     Integer.parseInt(fields[3]), Integer.parseInt(fields[4]), Integer.parseInt(fields[5]),
                     Integer.parseInt(fields[6]), Integer.parseInt(fields[7])))
             .setParallelism(1); // Get rid of warning of Timestamp monotony violated -> sequential
@@ -94,83 +95,53 @@ public class VehicleTelematics {
         //
         // 2nd ALERT - avgSpeedAlert
         //
+        DataStream<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>> beautiful_bug = parsedTimedStream
+                .filter(event -> event.f6 >= 52 && event.f6 <= 56 &&                      // get only those in between 52 and 56
+                            ( (event.f4 > 0 && event.f4 < 4)                                // and only vehicles that are in the travel lane
+                                || (event.f6 == 52 && event.f4 < 4)                           // except if vehicle enters in seg 52
+                                || (event.f6 == 56 && event.f4 > 0)))                        // or exits on seg 56
+                .map(tuple -> new Tuple9<Integer,Integer,Integer,Integer,Integer,Integer,Integer,Integer,ArrayList<Integer>>(tuple.f0, tuple.f0, tuple.f2, tuple.f3, tuple.f1, tuple.f5, tuple.f6  // moving f1(VID) to f7
+                        , 1, new ArrayList<Integer>(Arrays.asList(52,53,54,55,56))))                  // Added an array in the 10th pos and a count variable in the 9th pos
+                .keyBy(1, 3, 5)                                                    // key by id, xway and direction
+                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows assuming Timestamp monotony
+                .reduce((t1, t2) -> {
+                    t1.f8.remove(new Integer(t2.f6));
+                    int minTime = (t1.f0 < t2.f0) ? t1.f0 : t2.f0;
+                    int maxTime = (t1.f1 > t2.f1) ? t1.f1 : t2.f1;
+                    return new Tuple9(minTime, maxTime, t1.f2 + t2.f2,
+                            t1.f3, t1.f4, t1.f5, t1.f6, t1.f7 + t2.f7, t1.f8);
+                }, new WindowFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>, Tuple, TimeWindow>() {
+                    @Override
+                    public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>> iterable, Collector<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>> collector) throws Exception {
 
-        parsedTimedStream
-                // get only those in between 52 and 56
-                .filter(event -> event.f6 >= 52 && event.f6 <= 56)
-                /* POSSIBLE IMPROVEMENT:
-                        ( (event.f4 > 0 && event.f4 < 4)        // and only vehicles that are in the travel lane
-                        || (event.f6 == 52 && event.f4 < 4)     // except if vehicle enters in seg 52
-                        || (event.f6 == 56 && event.f4 > 0))    // or exits at segment 54
-                */
+                    }
+                });
 
-                // drop lane and position fields, add a new time field and a counter (=1)
-                .map (tuple -> {
-                    HashSet<Integer> segmentSet = new HashSet<>();
-                    segmentSet.add(tuple.f6);
-                    return new Tuple8<>(tuple.f0, tuple.f0, tuple.f1, tuple.f2, tuple.f3, tuple.f5, segmentSet, 1);
-                })
+        beautiful_bug
+                .filter(t -> t.f2/t.f7 >= 60)// && (t.f8.size() == 0 || (t.f8.size() == 1 && t.f8.contains(t.f6))))
+                .map(event -> new Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>(event.f0, event.f1, event.f4, event.f3, event.f7, event.f2/event.f7))
+                //.apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
+                .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);                                                      // setPar to 1 to create only ONE file
 
-                // key by id, xway and direction & reduce summing the speeds and the counters, expanding the set of segments and updating times
-                .keyBy(2, 4, 5).reduce((tuple1, tuple2) -> {
-                    tuple1.f0 = (tuple1.f0 <= tuple2.f0) ? tuple1.f0 : tuple2.f0;
-                    tuple1.f1 = (tuple1.f1 >= tuple2.f1) ? tuple1.f1 : tuple2.f1;
-                    tuple1.f3 += tuple2.f3;         // speedSum
-                    tuple1.f6.addAll(tuple2.f6);    // segmentSet
-                    tuple1.f7 += tuple2.f7;         // eventCount
-                    return tuple1;
-                })
-
-                // filter cars that did not travel all the segments
-                .filter(tuple -> tuple.f6.containsAll(ALL_SEGMENTS))
-
-                // compute avg speed for remaining cars
-                .map(tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f2, tuple.f4, tuple.f5, tuple.f3 / tuple.f7))
-
-                // filter out cars with avg speed < 60
-                .filter(tuple -> tuple.f5 >= 60)
-
-                // keep the latest maxTime tuple (DOES NOT WORK AS EXPECT
-                .keyBy(2,3,4)
-                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
-                .reduce((tuple1, tuple2) -> (tuple1.f1 > tuple2.f1) ? tuple1 : tuple2)
-
-                /*
-                // get only those in between 52 and 56
-                .filter(event -> event.f6 >= 52 && event.f6 <= 56)
-
-                .keyBy(1,3,5)
-
-                // get event windows that close as soon as a car doesn't give information for more than 30 secs
-                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
-
-                // get the tuple if vehicle went by all segments and avg speedSum >= 60mph
-                .apply(new ComputeWindowEvent())*/
-
-                // write the output into a new file
-                .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv",
-                            FileSystem.WriteMode.OVERWRITE)
-
-                // set parallelism to 1 to create only ONE file
-                .setParallelism(1);
-
-
+        /**  0      1      2     3    4     5     6    7    8
+         *  Time,  VID,   Spd, XWay, Lane, Dir,  Seg, Pos
+		 *
+		 *  Time1, Time2, Spd, XWay, VID,  Dir,  Seg, count, segList
+		 *
+         *  Time1, Time2, VID, XWay, Dir, AvgSpd
+         */
+        //
         //
         // 3rd ALERT - collisionAlert
         //
 
         parsedTimedStream
-                // only vehicles with null speed can crash, so keep only those events
-                .filter( tuple -> tuple.f2 == 0)
+                .keyBy(1, 3, 5)                                                      // key by id, highway and direction
+                .filter( tuple -> tuple.f2 == 0)                                            // only vehicles with null speed can crash
+                .keyBy(1, 3, 5)                                                      // key by id, highway and direction
+                .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4), Time.seconds(30))) // get windows of 2min every 30secs
 
-                // key by id, highway and direction
-                .keyBy(1, 3, 5)
-
-                // get sliding windows of 2min every 30secs
-                .window(SlidingEventTimeWindows.of(Time.seconds(30 * 4),
-                                                   Time.seconds(30)))
-
-                // look into the window to identify crashes
                 .apply(new CheckForCollisions())
 
                 // write the output into a new file
