@@ -76,8 +76,8 @@ public class VehicleTelematics {
 
         
         parsedTimedStream
-                // keep only those with speed >= 90mph
-                .filter( tuple -> tuple.f2 >= 90)
+                // keep only those with speed > 90mph
+                .filter( tuple -> tuple.f2 > 90)
 
                 // re-arrange the fields
                 .map( tuple -> new Tuple6<>(tuple.f0, tuple.f1, tuple.f3, tuple.f6, tuple.f5, tuple.f2))
@@ -93,18 +93,24 @@ public class VehicleTelematics {
         //
         // 2nd ALERT - avgSpeedAlert
         //
-        DataStream<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer[]>> beautiful_bug = parsedTimedStream
+        DataStream<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, int[]>> beautiful_bug = parsedTimedStream
                 .filter(event -> event.f6 >= 52 && event.f6 <= 56 &&                      // get only those in between 52 and 56
                             ( (event.f4 > 0 && event.f4 < 4)                                // and only vehicles that are in the travel lane
                                 || (event.f6 == 52 && event.f4 < 4)                           // except if vehicle enters in seg 52
                                 || (event.f6 == 56 && event.f4 > 0)))                        // or exits on seg 56
-                .map(tuple -> new Tuple9<Integer,Integer,Integer,Integer,Integer,Integer,Integer,Integer, Integer[]>(tuple.f0, tuple.f0, tuple.f2, tuple.f3, tuple.f1, tuple.f5, tuple.f6  // moving f1(VID) to f7
-                        , 1, new Integer[]{52,53,54,55,56})     )             // Added an array in the 10th pos and a count variable in the 9th pos
+                .map(tuple -> new Tuple9<Integer,Integer,Integer,Integer,Integer,Integer,Integer,Integer, int[]>(tuple.f0, tuple.f0, tuple.f2, tuple.f3, tuple.f1, tuple.f5, tuple.f6  // moving f1(VID) to f7
+                        , 1, new int[]{0,0,0,0,0}))                                       //52,53,54,55,56 each position represents a segment
                 .keyBy(4, 3, 5)                                                    // key by id, xway and direction
-                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows assuming Timestamp monotony
+                .window(EventTimeSessionWindows.withGap(Time.seconds(50)))                // get windows assuming Timestamp monotony
                 .reduce((t1, t2) -> {
-                    t1.f8[t1.f6-52] = 0;
-                    t1.f8[t2.f6-52] = 0;
+                    t1.f8[t1.f6-52] = 1;
+                    t1.f8[t2.f6-52] = 1;
+                    t1.f8[0] = t1.f8[0] | t2.f8[0];
+                    t1.f8[1] = t1.f8[1] | t2.f8[1];
+                    t1.f8[2] = t1.f8[2] | t2.f8[2];
+                    t1.f8[3] = t1.f8[3] | t2.f8[3];
+                    t1.f8[4] = t1.f8[4] | t2.f8[4];
+
                     int minTime = (t1.f0 < t2.f0) ? t1.f0 : t2.f0;
                     int maxTime = (t1.f1 > t2.f1) ? t1.f1 : t2.f1;
                     return new Tuple9(minTime, maxTime, t1.f2 + t2.f2,
@@ -112,8 +118,8 @@ public class VehicleTelematics {
                 });
 
         beautiful_bug
-                .filter(t -> t.f2/t.f7 >= 60 && t.f8[0]+t.f8[1]+t.f8[2]+t.f8[3]+t.f8[4] == 0)
-                .map(event -> new Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>(event.f0, event.f1, event.f4, event.f3, event.f5, event.f2/event.f7))
+                .filter(t -> t.f2/t.f7 >= 60 && t.f8[0]+t.f8[1]+t.f8[2]+t.f8[3]+t.f8[4] == 5)
+                .map(t -> new Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>(t.f0, t.f1, t.f4, t.f3, t.f5, t.f8[0]+t.f8[1]+t.f8[2]+t.f8[3]+t.f8[4]))//t.f2/t.f7))
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);                                                      // setPar to 1 to create only ONE file
 
