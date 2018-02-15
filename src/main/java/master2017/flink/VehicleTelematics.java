@@ -24,8 +24,6 @@ public class VehicleTelematics {
     private static DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedStream;
     private static SingleOutputStreamOperator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> parsedTimedStream;
 
-    private static Set<Integer> ALL_SEGMENTS = new HashSet<Integer>(Arrays.asList(52, 53, 54, 55, 56));
-
     public static void main(String[] args) throws Exception {
 
         if(args.length != 2){
@@ -95,32 +93,27 @@ public class VehicleTelematics {
         //
         // 2nd ALERT - avgSpeedAlert
         //
-        DataStream<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>> beautiful_bug = parsedTimedStream
+        DataStream<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer[]>> beautiful_bug = parsedTimedStream
                 .filter(event -> event.f6 >= 52 && event.f6 <= 56 &&                      // get only those in between 52 and 56
                             ( (event.f4 > 0 && event.f4 < 4)                                // and only vehicles that are in the travel lane
                                 || (event.f6 == 52 && event.f4 < 4)                           // except if vehicle enters in seg 52
                                 || (event.f6 == 56 && event.f4 > 0)))                        // or exits on seg 56
-                .map(tuple -> new Tuple9<Integer,Integer,Integer,Integer,Integer,Integer,Integer,Integer,ArrayList<Integer>>(tuple.f0, tuple.f0, tuple.f2, tuple.f3, tuple.f1, tuple.f5, tuple.f6  // moving f1(VID) to f7
-                        , 1, new ArrayList<Integer>(Arrays.asList(52,53,54,55,56))))                  // Added an array in the 10th pos and a count variable in the 9th pos
-                .keyBy(1, 3, 5)                                                    // key by id, xway and direction
+                .map(tuple -> new Tuple9<Integer,Integer,Integer,Integer,Integer,Integer,Integer,Integer, Integer[]>(tuple.f0, tuple.f0, tuple.f2, tuple.f3, tuple.f1, tuple.f5, tuple.f6  // moving f1(VID) to f7
+                        , 1, new Integer[]{52,53,54,55,56})     )             // Added an array in the 10th pos and a count variable in the 9th pos
+                .keyBy(4, 3, 5)                                                    // key by id, xway and direction
                 .window(EventTimeSessionWindows.withGap(Time.seconds(31)))                // get windows assuming Timestamp monotony
                 .reduce((t1, t2) -> {
-                    t1.f8.remove(new Integer(t2.f6));
+                    t1.f8[t1.f6-52] = 0;
+                    t1.f8[t2.f6-52] = 0;
                     int minTime = (t1.f0 < t2.f0) ? t1.f0 : t2.f0;
                     int maxTime = (t1.f1 > t2.f1) ? t1.f1 : t2.f1;
                     return new Tuple9(minTime, maxTime, t1.f2 + t2.f2,
                             t1.f3, t1.f4, t1.f5, t1.f6, t1.f7 + t2.f7, t1.f8);
-                }, new WindowFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>, Tuple, TimeWindow>() {
-                    @Override
-                    public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>> iterable, Collector<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, ArrayList<Integer>>> collector) throws Exception {
-
-                    }
                 });
 
         beautiful_bug
-                .filter(t -> t.f2/t.f7 >= 60)// && (t.f8.size() == 0 || (t.f8.size() == 1 && t.f8.contains(t.f6))))
-                .map(event -> new Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>(event.f0, event.f1, event.f4, event.f3, event.f7, event.f2/event.f7))
-                //.apply(new ComputeWindowEvent())                                          // get the tuple if vehicle went by all segments and avg speed >= 60mph
+                .filter(t -> t.f2/t.f7 >= 60 && t.f8[0]+t.f8[1]+t.f8[2]+t.f8[3]+t.f8[4] == 0)
+                .map(event -> new Tuple6<Integer,Integer,Integer,Integer,Integer,Integer>(event.f0, event.f1, event.f4, event.f3, event.f5, event.f2/event.f7))
                 .writeAsCsv(OUTPUT_FOLDER_PATH + "/" + "avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);                                                      // setPar to 1 to create only ONE file
 
@@ -158,65 +151,6 @@ public class VehicleTelematics {
         System.out.println("=========================================================================================");
 
 
-    }
-
-
-    /**  0      1      2     3    4     5    6   7
-     *  Time,  VID,   Spd, XWay, Lane, Dir, Seg, Pos
-     *  Time1, Time2, VID, XWay, Dir,  AvgSpd
-     */
-
-    private static class ComputeWindowEvent // Assumed Timestamp monotony
-            implements WindowFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>,
-            Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>, Tuple, TimeWindow> {
-
-        Iterator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> window;
-        Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> event;
-
-        Set<Integer> segmentSet;
-        int eventCount, speedSum, minTime, maxTime;
-
-
-        @Override
-        public void apply(Tuple tuple, TimeWindow timeWindow,
-                Iterable<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> iterable,
-                    Collector<Tuple6<Integer, Integer, Integer, Integer, Integer, Integer>> collector) {
-
-            eventCount = 0;
-            speedSum = 0;
-            minTime = Integer.MAX_VALUE;
-            maxTime = 0;
-            segmentSet = new HashSet<>();
-
-            window = iterable.iterator();
-
-            while (window.hasNext()) {
-
-                // count an event more
-                event = window.next();
-                eventCount ++;
-
-                // update the sum of the speeds of the vehicle
-                speedSum += event.f2;
-
-                // update the earliest and the latest time the car drove through the segments 52-56
-                minTime = (event.f0 < minTime) ? event.f0 : minTime;
-                maxTime = (event.f0 > maxTime) ? event.f0 : maxTime;
-
-                // update the sets of segments the car drove through
-                segmentSet.add(event.f6);
-
-            }
-
-            if(!segmentSet.containsAll(ALL_SEGMENTS) || minTime >= maxTime)
-                return;
-
-            if(speedSum / eventCount < 60)
-                return;
-
-            collector.collect(new Tuple6<>(minTime, maxTime, event.f1, event.f3, event.f5, speedSum / eventCount));
-
-        }
     }
 
 
